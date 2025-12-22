@@ -40,7 +40,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Logo & Title - Visible on all devices */}
         <div className="flex items-center gap-2 text-white shrink-0">
           <Logo className="size-8 md:size-10" />
-          <h1 className="text-white text-lg md:text-xl font-bold leading-tight tracking-[-0.015em]">{t.appTitle}</h1>
+          <h1 className="text-white text-lg md:text-xl font-bold leading-tight tracking-[-0.015em]">AI Images</h1>
         </div>
 
         {/* Mobile: View Switcher Dropdown (Centered) */}
