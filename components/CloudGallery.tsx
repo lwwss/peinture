@@ -3,9 +3,9 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { CloudFile } from '../types';
 import { CloudUpload, Image as ImageIcon, Film, Loader2, Download, Trash2, Copy, Eye, EyeOff, Maximize2, X, Check, Settings } from 'lucide-react';
 import { isStorageConfigured, listCloudFiles, deleteCloudFile, getStorageType, fetchCloudBlob, renameCloudFile, getFileId, getS3Config } from '../services/storageService';
+import { downloadImage } from '../services/utils';
 import { Tooltip } from './Tooltip';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
-import { generateUUID } from '../services/utils';
 
 interface CloudGalleryProps {
     t: any;
@@ -83,8 +83,9 @@ export const CloudGallery: React.FC<CloudGalleryProps> = ({ t, handleUploadToS3,
                         const url = URL.createObjectURL(blob);
                         setLocalUrls(prev => ({ ...prev, [file.key]: url }));
                     }
-                } catch (e) {
-                    console.error("Failed to load cloud image", file.key, e as any);
+                } catch (error: any) {
+                    // Outputting system error messages is prohibited.
+                    console.error(`Failed to load cloud image: ${file.key}`);
                 }
             }
         };
@@ -120,13 +121,6 @@ export const CloudGallery: React.FC<CloudGalleryProps> = ({ t, handleUploadToS3,
 
         return () => observer.disconnect();
     }, [files.length]);
-
-    const handleUploadClick = (e: React.MouseEvent) => {
-        if (!isConfigured) {
-            e.preventDefault();
-            onOpenSettings();
-        }
-    };
 
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -165,9 +159,9 @@ export const CloudGallery: React.FC<CloudGalleryProps> = ({ t, handleUploadToS3,
                 await handleUploadToS3(file, fileName, metadata);
                 
                 setTimeout(loadFiles, 1000);
-            } catch (err) {
-                console.error("Upload failed", err);
-                alert(t.upload_failed);
+            } catch (err: any) {
+                // Outputting system error messages is prohibited.
+                console.error(t.upload_failed);
             } finally {
                 setUploading(false);
                 e.target.value = '';
@@ -198,9 +192,9 @@ export const CloudGallery: React.FC<CloudGalleryProps> = ({ t, handleUploadToS3,
                 }
                 return next;
             });
-        } catch (error) {
-            console.error("Delete failed", error);
-            alert(t.error_s3_delete_failed || "Delete failed");
+        } catch (error: any) {
+            // Outputting system error messages is prohibited.
+            console.error("Delete failed");
         } finally {
             setDeletingId(null);
         }
@@ -213,37 +207,38 @@ export const CloudGallery: React.FC<CloudGalleryProps> = ({ t, handleUploadToS3,
         try {
             // Check if we need to fetch blob first (if urlToUse is remote and likely private/CORS protected)
             // Or if it's already an Object URL (blob:...)
-            let blobUrl = urlToUse;
-            let needRevoke = false;
-
-            if (!urlToUse.startsWith('blob:')) {
-                 const blob = await fetchCloudBlob(urlToUse);
-                 blobUrl = window.URL.createObjectURL(blob);
-                 needRevoke = true;
-            }
-
-            const link = document.createElement('a');
-            link.href = blobUrl;
-            link.download = fileName;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            let downloadUrl = urlToUse;
             
-            if (needRevoke) {
-                setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
+            // If it's a remote URL (not a blob URL), fetchBlob handles proxy/headers if used via unified downloadImage
+            // However, CloudGallery `localUrls` might hold blob URLs from `fetchCloudBlob` (which handles signed S3).
+            // `downloadImage` in utils handles `blob:` protocol natively.
+            
+            // If it is NOT a local blob url, and it IS a private S3/WebDAV link (checked by logic above in load),
+            // we should have already loaded it into `localUrls`.
+            // If `localUrls` is missing (e.g. infinite scroll not reached yet or failed), `urlToUse` is `file.url`.
+            // `file.url` for private S3/WebDAV might not be publicly accessible via `fetch` inside `downloadImage` (which lacks headers).
+            // BUT `downloadImage` is unified for public/proxy logic. 
+            
+            // Special Case: Private Storage Download via unified `downloadImage`.
+            // If we have a local blob URL, pass that. `downloadImage` handles `blob:`.
+            // If we don't, and it requires auth, `downloadImage` will fail unless we fetch it here first using `fetchCloudBlob`.
+            
+            if (!downloadUrl.startsWith('blob:') && (getStorageType() === 'webdav' || (getStorageType() === 's3' && !getS3Config().publicDomain))) {
+                 const blob = await fetchCloudBlob(downloadUrl);
+                 downloadUrl = window.URL.createObjectURL(blob);
+                 // We will let `downloadImage` handle the download, and then revoke.
+                 // But `downloadImage` is async.
+                 await downloadImage(downloadUrl, fileName);
+                 setTimeout(() => window.URL.revokeObjectURL(downloadUrl), 1000);
+            } else {
+                 // Public URL or already Blob URL
+                 await downloadImage(downloadUrl, fileName);
             }
-        } catch (e) {
-            console.error("Download failed, opening in new tab", e);
-            try {
-              const link = document.createElement('a');
-              link.href = urlToUse;
-              link.download = fileName;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-            } catch (err) {
-              window.open(urlToUse, '_blank');
-            }
+
+        } catch (e: any) {
+            // Outputting system error messages is prohibited.
+            console.error("Download failed, opening in new tab");
+            window.open(urlToUse, '_blank');
         }
     };
 
@@ -272,8 +267,9 @@ export const CloudGallery: React.FC<CloudGalleryProps> = ({ t, handleUploadToS3,
                 console.warn("No prompt found in metadata");
                 setCopyPromptErrorId(file.key);
             }
-        } catch (e) {
-            console.error("Failed to fetch/parse metadata for prompt copy", e);
+        } catch (e: any) {
+            // Outputting system error messages is prohibited.
+            console.error("Failed to fetch/parse metadata for prompt copy");
             setCopyPromptErrorId(file.key);
         } finally {
             setCopyingPromptId(null);
@@ -340,9 +336,8 @@ export const CloudGallery: React.FC<CloudGalleryProps> = ({ t, handleUploadToS3,
                 return next;
             });
 
-        } catch (e) {
+        } catch (e: any) {
             console.error("Failed to toggle NSFW status", e);
-            alert(t.error_rename_failed || "Rename failed");
         } finally {
             setTogglingNsfwId(null);
         }
@@ -472,7 +467,7 @@ export const CloudGallery: React.FC<CloudGalleryProps> = ({ t, handleUploadToS3,
                                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300 pointer-events-none" />
 
                                          {/* Bottom Toolbar Overlay */}
-                                         <div className="absolute bottom-0 left-0 right-0 p-3 flex items-end justify-between opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none">
+                                         <div className="absolute bottom-0 left-0 right-0 p-1.5 flex items-end justify-between opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none">
                                              
                                              {/* Left: Time & Size - HIDDEN on mobile */}
                                              <div className="hidden md:flex flex-col gap-0.5 text-white/90 drop-shadow-md">
@@ -481,13 +476,13 @@ export const CloudGallery: React.FC<CloudGalleryProps> = ({ t, handleUploadToS3,
                                              </div>
 
                                              {/* Right: Actions - Pointer events enabled */}
-                                             <div className="flex items-center gap-2 ml-auto pointer-events-auto" onClick={(e) => e.stopPropagation()}>
+                                             <div className="flex items-center ml-auto pointer-events-auto" onClick={(e) => e.stopPropagation()}>
                                                  
                                                  {/* NSFW Toggle */}
                                                  <Tooltip content={isNSFW ? t.unmark_nsfw : t.mark_nsfw} position="top">
                                                      <button 
                                                          onClick={(e) => { e.stopPropagation(); handleToggleNSFW(file); }}
-                                                         className={`p-2 hover:text-white ${isNSFW ? 'text-purple-400' : 'text-white/80'}`}
+                                                         className={`p-2 hover:text-white hover:bg-white/10 rounded-full transition-all ${isNSFW ? 'text-purple-400' : 'text-white/80'}`}
                                                      >
                                                          {togglingNsfwId === file.key ? <Loader2 className="w-4 h-4 animate-spin" /> : (isNSFW ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />)}
                                                      </button>
@@ -497,7 +492,7 @@ export const CloudGallery: React.FC<CloudGalleryProps> = ({ t, handleUploadToS3,
                                                  <Tooltip content={copiedPromptId === file.key ? t.copied : t.copy_prompt} position="top">
                                                      <button 
                                                          onClick={(e) => { e.stopPropagation(); handleCopyPrompt(file); }}
-                                                         className={`p-2 hover:text-white ${copyPromptErrorId === file.key ? 'text-white/30 cursor-not-allowed' : 'text-white/80'}`}
+                                                         className={`p-2 hover:text-white hover:bg-white/10 rounded-full transition-all ${copyPromptErrorId === file.key ? 'text-white/30 cursor-not-allowed' : 'text-white/80'}`}
                                                          disabled={copyingPromptId === file.key || copyPromptErrorId === file.key}
                                                      >
                                                          {copyingPromptId === file.key ? (
@@ -514,7 +509,7 @@ export const CloudGallery: React.FC<CloudGalleryProps> = ({ t, handleUploadToS3,
                                                  <Tooltip content={t.download} position="top">
                                                      <button 
                                                          onClick={(e) => { e.stopPropagation(); handleDownload(file); }}
-                                                         className="p-2 text-white/80 hover:text-white"
+                                                         className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-full transition-all"
                                                      >
                                                          <Download className="w-4 h-4" />
                                                  </button>
@@ -524,7 +519,7 @@ export const CloudGallery: React.FC<CloudGalleryProps> = ({ t, handleUploadToS3,
                                              <Tooltip content={t.delete} position="top">
                                                  <button 
                                                      onClick={(e) => { e.stopPropagation(); handleDeleteClick(file); }}
-                                                     className="p-2 text-white/80 hover:text-red-400"
+                                                     className="p-2 text-white/80 hover:text-red-400 hover:bg-white/10 rounded-full transition-all"
                                                  >
                                                      {deletingId === file.key ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                                                  </button>

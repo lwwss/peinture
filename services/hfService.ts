@@ -8,8 +8,8 @@ const OVIS_IMAGE_BASE_API_URL = "https://aidc-ai-ovis-image-7b.hf.space";
 const FLUX_SCHNELL_BASE_API_URL = "https://black-forest-labs-flux-1-schnell.hf.space";
 const UPSCALER_BASE_API_URL = "https://tuan2308-upscaler.hf.space";
 const POLLINATIONS_API_URL = "https://text.pollinations.ai/openai";
-const WAN2_VIDEO_API_URL = "https://zerogpu-aoti-wan2-2-fp8da-aoti-faster.hf.space";
-const QWEN_IMAGE_EDIT_BASE_API_URL = "https://linoyts-qwen-image-edit-2509-fast.hf.space";
+const WAN2_VIDEO_API_URL = "https://fradeck619-wan2-2-fp8da-aoti-faster.hf.space";
+export const QWEN_IMAGE_EDIT_BASE_API_URL = "https://linoyts-qwen-image-edit-2509-fast.hf.space";
 
 // --- Token Management System ---
 
@@ -23,6 +23,8 @@ interface TokenStatusStore {
 }
 
 const getUTCDatesString = () => new Date().toISOString().split('T')[0];
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const getTokenStatusStore = (): TokenStatusStore => {
   const defaultStore = { date: getUTCDatesString(), exhausted: {} };
@@ -135,9 +137,9 @@ const runWithTokenRetry = async <T>(operation: (token: string | null) => Promise
 
 // --- Gradio File Upload Helper ---
 
-export const uploadToGradio = async (baseUrl: string, blob: Blob, token: string | null, signal?: AbortSignal): Promise<string> => {
+export const uploadToGradio = async (baseUrl: string, image: string | Blob, token: string | null, signal?: AbortSignal): Promise<string> => {
     const formData = new FormData();
-    formData.append('files', blob, 'image.png');
+    formData.append('files', image);
     
     const headers: Record<string, string> = {};
     if (token) {
@@ -345,7 +347,7 @@ const generateQwenImage = async (
       return {
         id: generateUUID(),
         url: data[0].url,
-        model: 'qwen-image-fast',
+        model: 'qwen-image', // Standardized ID
         prompt,
         aspectRatio,
         timestamp: Date.now(),
@@ -444,6 +446,9 @@ export const editImageQwen = async (
         signal
       });
       const { event_id } = await queue.json();
+
+      await sleep(30);
+
       const response = await fetch(QWEN_IMAGE_EDIT_BASE_API_URL + '/gradio_api/call/infer/' + event_id, {
         headers: {
           "Accept": "text/event-stream",
@@ -461,7 +466,7 @@ export const editImageQwen = async (
       return {
         id: generateUUID(),
         url: data[0][0].image.url,
-        model: 'qwen-image-edit-fast',
+        model: 'qwen-image-edit', // Unified ID
         prompt,
         aspectRatio: 'custom',
         timestamp: Date.now(),
@@ -489,11 +494,12 @@ export const generateImage = async (
 
   if (model === 'flux-1-schnell') {
     return generateFluxSchnellImage(prompt, aspectRatio, finalSeed, enableHD, steps);
-  } else if (model === 'qwen-image-fast') {
+  } else if (model === 'qwen-image') {
     return generateQwenImage(prompt, aspectRatio, seed, steps);
   } else if (model === 'ovis-image') {
     return generateOvisImage(prompt, aspectRatio, finalSeed, enableHD, steps)
   } else {
+    // Default to z-image-turbo
     return generateZImage(prompt, aspectRatio, finalSeed, enableHD, steps);
   }
 };
@@ -509,6 +515,9 @@ export const upscaler = async (url: string): Promise<{ url: string }> => {
         })
       });
       const { event_id } = await queue.json();
+
+      await sleep(30);
+
       const response = await fetch(UPSCALER_BASE_API_URL + '/gradio_api/call/realesrgan/' + event_id, {
         headers: getAuthHeaders(token)
       });
@@ -570,19 +579,27 @@ export const optimizePrompt = async (originalPrompt: string): Promise<string> =>
 
 const VIDEO_NEGATIVE_PROMPT = "Vivid colors, overexposed, static, blurry details, subtitles, style, artwork, painting, image, still, overall grayish tone, worst quality, low quality, JPEG compression artifacts, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn face, deformed, disfigured, malformed limbs, fused fingers, still image, cluttered background, three legs, many people in the background, walking backward, Screen shaking";
 
-export const createVideoTaskHF = async (imageUrl: string, seed: number = 42): Promise<string> => {
+export const createVideoTaskHF = async (imageInput: string | Blob, seed: number = 42): Promise<string> => {
   return runWithTokenRetry(async (token) => {
     try {
       const finalSeed = seed ?? Math.floor(Math.random() * 2147483647);
       const settings = getVideoSettings('huggingface');
       
+      let filePath = '';
+      
+      if (typeof imageInput === 'string') {
+          filePath = imageInput;
+      } else {
+          filePath = await uploadToGradio(WAN2_VIDEO_API_URL, imageInput, token);
+      }
+
       // Step 1: POST to queue
       const queue = await fetch(WAN2_VIDEO_API_URL + '/gradio_api/call/generate_video', {
         method: "POST",
         headers: getAuthHeaders(token),
         body: JSON.stringify({
           data: [
-            { "path": imageUrl, "meta": { "_type": "gradio.FileData" } },
+            { "path": filePath, "meta": { "_type": "gradio.FileData" } },
             settings.prompt,
             settings.steps, // Steps from settings
             VIDEO_NEGATIVE_PROMPT,
@@ -595,6 +612,8 @@ export const createVideoTaskHF = async (imageUrl: string, seed: number = 42): Pr
         })
       });
       const { event_id } = await queue.json();
+
+      await sleep(40);
 
       // Step 2: Loop to check status. Since HF API relies on event stream which might be long-lived,
       // we use fetch without abort controller to read the stream until it ends (server closes).

@@ -1,4 +1,6 @@
 
+import { CustomProvider, ServiceMode } from "../types";
+
 export function generateUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
     const r = Math.random() * 16 | 0;
@@ -7,9 +9,29 @@ export function generateUUID(): string {
   });
 }
 
+// --- Service Mode Management ---
+
+const SERVICE_MODE_KEY = 'service_mode';
+
+export const getServiceMode = (): ServiceMode => {
+    // If local storage has value, use it.
+    if (typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem(SERVICE_MODE_KEY);
+        if (stored) return stored as ServiceMode;
+    }
+    // Fallback to Env Var, then default to 'local'
+    return (process.env.VITE_SERVICE_MODE as ServiceMode) || 'local';
+};
+
+export const saveServiceMode = (mode: ServiceMode) => {
+    if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(SERVICE_MODE_KEY, mode);
+    }
+};
+
 // --- System Prompt Management ---
 
-export const FIXED_SYSTEM_PROMPT_SUFFIX = "\nEnsure the output language matches the language of the prompt that needs to be optimized.";
+export const FIXED_SYSTEM_PROMPT_SUFFIX = "\nEnsure the output language matches the language of user's prompt that needs to be optimized.";
 
 export const DEFAULT_SYSTEM_PROMPT_CONTENT = `I am a master AI image prompt engineering advisor, specializing in crafting prompts that yield cinematic, hyper-realistic, and deeply evocative visual narratives, optimized for advanced generative models.
 My core purpose is to meticulously rewrite, expand, and enhance user's image prompts.
@@ -19,7 +41,13 @@ My output will consist exclusively of the refined image prompt text. It will com
 The text will strictly avoid markdown, quotation marks, conversational preambles, explanations, or concluding remarks. Please describe the content using prose-style sentences.
 **The character's face is clearly visible and unobstructed.**`;
 
+export const DEFAULT_TRANSLATION_SYSTEM_PROMPT = `You are a professional language translation engine.
+Your sole responsibility is to translate user-provided text into English. Before processing any input, you must first identify its original language.
+If the input text is already in English, return the original English text directly without any modification. If the input text is not in English, translate it precisely into English.
+Your output must strictly adhere to the following requirements: it must contain only the final English translation or the original English text, without any explanations, comments, descriptions, prefixes, suffixes, quotation marks, or other non-translated content.`;
+
 const SYSTEM_PROMPT_STORAGE_KEY = 'custom_system_prompt';
+const TRANSLATION_PROMPT_STORAGE_KEY = 'custom_translation_prompt';
 
 export const getSystemPromptContent = (): string => {
   if (typeof localStorage === 'undefined') return DEFAULT_SYSTEM_PROMPT_CONTENT;
@@ -28,7 +56,6 @@ export const getSystemPromptContent = (): string => {
 
 export const saveSystemPromptContent = (content: string) => {
   if (typeof localStorage !== 'undefined') {
-    // If saving default content, just remove the key to keep it clean
     if (content === DEFAULT_SYSTEM_PROMPT_CONTENT) {
       localStorage.removeItem(SYSTEM_PROMPT_STORAGE_KEY);
     } else {
@@ -37,12 +64,27 @@ export const saveSystemPromptContent = (content: string) => {
   }
 };
 
-// --- Optimization Model Management ---
+export const getTranslationPromptContent = (): string => {
+  if (typeof localStorage === 'undefined') return DEFAULT_TRANSLATION_SYSTEM_PROMPT;
+  return localStorage.getItem(TRANSLATION_PROMPT_STORAGE_KEY) || DEFAULT_TRANSLATION_SYSTEM_PROMPT;
+};
+
+export const saveTranslationPromptContent = (content: string) => {
+  if (typeof localStorage !== 'undefined') {
+    if (content === DEFAULT_TRANSLATION_SYSTEM_PROMPT) {
+      localStorage.removeItem(TRANSLATION_PROMPT_STORAGE_KEY);
+    } else {
+      localStorage.setItem(TRANSLATION_PROMPT_STORAGE_KEY, content);
+    }
+  }
+};
+
+// --- Optimization Model Management (Deprecated in favor of generic config, but kept for compat) ---
 
 export const DEFAULT_OPTIMIZATION_MODELS: Record<string, string> = {
   huggingface: 'openai-fast',
-  gitee: 'DeepSeek-V3.2',
-  modelscope: 'deepseek-ai/DeepSeek-V3.2'
+  gitee: 'deepseek-3_2',
+  modelscope: 'deepseek-3_2'
 };
 
 const OPTIM_MODEL_STORAGE_PREFIX = 'optim_model_';
@@ -62,6 +104,69 @@ export const saveOptimizationModel = (provider: string, model: string) => {
           localStorage.setItem(OPTIM_MODEL_STORAGE_PREFIX + provider, model.trim());
       }
   }
+};
+
+// --- Unified Model Configuration ---
+
+const EDIT_MODEL_KEY = 'app_edit_model_config';
+const LIVE_MODEL_KEY = 'app_live_model_config';
+const TEXT_MODEL_KEY = 'app_text_model_config';
+const UPSCALER_MODEL_KEY = 'app_upscaler_model_config';
+
+export const getEditModelConfig = (): { provider: string, model: string } => {
+    if (typeof localStorage === 'undefined') return { provider: 'huggingface', model: 'qwen-image-edit' };
+    const saved = localStorage.getItem(EDIT_MODEL_KEY);
+    if (saved) {
+        const [provider, model] = saved.split(':');
+        return { provider, model };
+    }
+    return { provider: 'huggingface', model: 'qwen-image-edit' };
+};
+
+export const saveEditModelConfig = (value: string) => {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(EDIT_MODEL_KEY, value);
+};
+
+export const getLiveModelConfig = (): { provider: string, model: string } => {
+    if (typeof localStorage === 'undefined') return { provider: 'huggingface', model: 'wan2_2-i2v' };
+    const saved = localStorage.getItem(LIVE_MODEL_KEY);
+    if (saved) {
+        const [provider, model] = saved.split(':');
+        return { provider, model };
+    }
+    return { provider: 'huggingface', model: 'wan2_2-i2v' };
+};
+
+export const saveLiveModelConfig = (value: string) => {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(LIVE_MODEL_KEY, value);
+};
+
+export const getTextModelConfig = (): { provider: string, model: string } => {
+    if (typeof localStorage === 'undefined') return { provider: 'huggingface', model: 'openai-fast' };
+    const saved = localStorage.getItem(TEXT_MODEL_KEY);
+    if (saved) {
+        const [provider, model] = saved.split(':');
+        return { provider, model };
+    }
+    return { provider: 'huggingface', model: 'openai-fast' };
+};
+
+export const saveTextModelConfig = (value: string) => {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(TEXT_MODEL_KEY, value);
+};
+
+export const getUpscalerModelConfig = (): { provider: string, model: string } => {
+    if (typeof localStorage === 'undefined') return { provider: 'huggingface', model: 'RealESRGAN_x4plus' };
+    const saved = localStorage.getItem(UPSCALER_MODEL_KEY);
+    if (saved) {
+        const [provider, model] = saved.split(':');
+        return { provider, model };
+    }
+    return { provider: 'huggingface', model: 'RealESRGAN_x4plus' };
+};
+
+export const saveUpscalerModelConfig = (value: string) => {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(UPSCALER_MODEL_KEY, value);
 };
 
 // --- Video Settings Management ---
@@ -117,12 +222,52 @@ export const saveVideoSettings = (provider: string, settings: VideoSettings) => 
   }
 };
 
+// --- Custom Provider Management ---
+
+const CUSTOM_PROVIDERS_KEY = 'app_custom_providers';
+
+export const getCustomProviders = (): CustomProvider[] => {
+    if (typeof localStorage === 'undefined') return [];
+    try {
+        const saved = localStorage.getItem(CUSTOM_PROVIDERS_KEY);
+        return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+        console.error("Failed to load custom providers", e);
+        return [];
+    }
+};
+
+export const saveCustomProviders = (providers: CustomProvider[]) => {
+    if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(CUSTOM_PROVIDERS_KEY, JSON.stringify(providers));
+    }
+};
+
+export const addCustomProvider = (provider: CustomProvider) => {
+    const current = getCustomProviders();
+    const existingIndex = current.findIndex(p => p.id === provider.id);
+    if (existingIndex >= 0) {
+        current[existingIndex] = provider;
+    } else {
+        current.push(provider);
+    }
+    saveCustomProviders(current);
+};
+
+export const removeCustomProvider = (id: string) => {
+    const current = getCustomProviders();
+    const updated = current.filter(p => p.id !== id);
+    saveCustomProviders(updated);
+};
+
 // --- Translation Service ---
 
 const POLLINATIONS_API_URL = "https://text.pollinations.ai/openai";
 
 export const translatePrompt = async (text: string): Promise<string> => {
     try {
+        const systemPrompt = getTranslationPromptContent();
+        
         const response = await fetch(POLLINATIONS_API_URL, {
             method: 'POST',
             headers: {
@@ -133,10 +278,7 @@ export const translatePrompt = async (text: string): Promise<string> => {
                 messages: [
                     {
                         role: 'system',
-                        content: `You are a professional language translation engine.
-Your sole responsibility is to translate user-provided text into English. Before processing any input, you must first identify its original language.
-If the input text is already in English, return the original English text directly without any modification. If the input text is not in English, translate it precisely into English.
-Your output must strictly adhere to the following requirements: it must contain only the final English translation or the original English text, without any explanations, comments, descriptions, prefixes, suffixes, quotation marks, or other non-translated content.`
+                        content: systemPrompt
                     },
                     {
                         role: 'user',
@@ -161,7 +303,7 @@ Your output must strictly adhere to the following requirements: it must contain 
     }
 };
 
-export const optimizeEditPrompt = async (imageBase64: string, prompt: string): Promise<string> => {
+export const optimizeEditPrompt = async (imageBase64: string, prompt: string, model: string = 'openai-fast'): Promise<string> => {
   try {
     // Pollinations AI OpenAI-compatible endpoint
     const response = await fetch(POLLINATIONS_API_URL, {
@@ -170,7 +312,7 @@ export const optimizeEditPrompt = async (imageBase64: string, prompt: string): P
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'openai-fast',
+        model: model, // Dynamically use passed model
         messages: [
           {
             role: 'system',
@@ -208,4 +350,92 @@ Only reply with the optimized prompt text. Do not add any conversational content
     console.error("Optimize Edit Prompt Error:", error);
     throw error;
   }
+};
+
+// --- Unified URL/Blob Utilities ---
+
+export const getProxyUrl = (url: string) => `https://peinture-proxy.9th.xyz/?url=${encodeURIComponent(url)}`;
+
+/**
+ * Unified function to fetch a Blob from a URL.
+ * First tries a direct fetch. If that fails (e.g. CORS), falls back to using the proxy.
+ */
+export const fetchBlob = async (url: string): Promise<Blob> => {
+    // Handle data/blob URLs locally without fetching
+    if (url.startsWith('data:') || url.startsWith('blob:')) {
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Local fetch failed: ${res.status}`);
+            return res.blob();
+        } catch (e) {
+            console.warn("Local blob/data URL fetch failed", e);
+            throw new Error("Local resource not found");
+        }
+    }
+
+    try {
+        const response = await fetch(url, { cache: 'no-cache' });
+        if (!response.ok) throw new Error(`Direct fetch failed: ${response.status}`);
+        return await response.blob();
+    } catch (e) {
+        console.warn("Direct fetch failed, trying proxy...", e);
+        const proxyUrl = getProxyUrl(url);
+        const proxyResponse = await fetch(proxyUrl);
+        if (!proxyResponse.ok) throw new Error(`Proxy fetch failed: ${proxyResponse.status}`);
+        return await proxyResponse.blob();
+    }
+};
+
+/**
+ * Unified function to download an image from a URL.
+ * - PC: Uses <a> tag with 'download' attribute.
+ * - Mobile: Fetches Blob -> Tries navigator.share -> Falls back to ObjectURL download.
+ */
+export const downloadImage = async (url: string, fileName: string) => {
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    if (!isMobile) {
+        // Desktop: Direct download via <a> tag
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    } else {
+        // Mobile: Fetch Blob -> Share -> ObjectURL
+        try {
+            const blob = await fetchBlob(url);
+            const file = new File([blob], fileName, { type: blob.type });
+            const nav = navigator as any;
+
+            if (nav.canShare && nav.canShare({ files: [file] })) {
+                try {
+                    await nav.share({
+                        files: [file],
+                        title: 'Peinture Image',
+                    });
+                    return;
+                } catch (e: any) {
+                    if (e.name === 'AbortError') return;
+                    console.warn("Share failed, falling back to download", e);
+                }
+            }
+
+            // Fallback to ObjectURL download
+            const blobUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+        } catch (e) {
+            console.error("Download failed", e);
+            // Final fallback: just open in new tab
+            window.open(url, '_blank');
+        }
+    }
 };
