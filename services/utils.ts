@@ -180,20 +180,20 @@ export interface VideoSettings {
 
 export const DEFAULT_VIDEO_SETTINGS: Record<string, VideoSettings> = {
   huggingface: {
-    prompt: "make this image come alive, cinematic motion, smooth animation, Raw footage, handheld camera style, ultra-realistic, 8k resolution, camera slowly moving backward, slight camera shake, no people, empty scene, natural lighting, high fidelity, unedited look, authentic atmosphere",
-    duration: 3,
+    prompt: "High quality, photorealistic, 8k, raw footage, empty indoor room, no people, camera slowly moving backward to reveal more of the space, wide angle lens, authentic interior lighting, sharp details.",
+    duration: 5,
     steps: 6,
     guidance: 1
   },
   gitee: {
-    prompt: "make this image come alive, cinematic motion, smooth animation, Raw footage, handheld camera style, ultra-realistic, 8k resolution, camera slowly moving backward, slight camera shake, no people, empty scene, natural lighting, high fidelity, unedited look, authentic atmosphere",
-    duration: 3,
+    prompt: "High quality, photorealistic, 8k, raw footage, empty indoor room, no people, camera slowly moving backward to reveal more of the space, wide angle lens, authentic interior lighting, sharp details.",
+    duration: 5,
     steps: 10,
     guidance: 4
   },
   modelscope: {
-    prompt: "make this image come alive, cinematic motion, smooth animation, Raw footage, handheld camera style, ultra-realistic, 8k resolution, camera slowly moving backward, slight camera shake, no people, empty scene, natural lighting, high fidelity, unedited look, authentic atmosphere",
-    duration: 3,
+    prompt: "High quality, photorealistic, 8k, raw footage, empty indoor room, no people, camera slowly moving backward to reveal more of the space, wide angle lens, authentic interior lighting, sharp details.",
+    duration: 5,
     steps: 10,
     guidance: 4
   }
